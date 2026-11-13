@@ -17,3 +17,5 @@
 .auth-link{display:inline-block;color:#2866b2;font-size:13px;font-weight:650;text-decoration:none}
 .user-email{font-size:11px;color:#65758b;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:700px){.auth-card{padding:26px 20px}.user-email{display:none}}
+
+.booking-count{margin-left:auto;background:#dce9ff;color:#285eaa;border-radius:20px;padding:2px 7px;font-size:10px}.booking-card{border:1px solid #e9edf3;border-radius:12px;padding:16px;margin-top:12px}.booking-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.booking-top strong{font-size:13px}.booking-card ul{margin:12px 0;padding-left:19px;color:#526178;font-size:12px;line-height:1.8}.booking-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.booking-actions .danger-button{margin-top:0}

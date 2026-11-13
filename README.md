@@ -51,3 +51,20 @@ This first MVP stores data locally in the browser/app on one device. It does not
 - Printable invoice/PDF layout
 - Stronger local database and Android device testing
 - Optional secure multi-device sync
+
+## Google sign-in setup
+
+Google login uses Firebase Authentication. Before the login screen can be activated:
+
+1. Create or open a project in the [Firebase Console](https://console.firebase.google.com/).
+2. Add a Web app to the Firebase project and copy its Firebase web configuration.
+3. In Firebase Authentication, enable **Google** under Sign-in providers.
+4. Add `ask479415-tech.github.io` to Authentication > Settings > Authorized domains.
+5. In this GitHub repository, open Settings > Secrets and variables > Actions > Variables and add these repository variables (the Firebase web config values are public client configuration, not private service-account keys):
+   - `VITE_FIREBASE_API_KEY`
+   - `VITE_FIREBASE_AUTH_DOMAIN`
+   - `VITE_FIREBASE_PROJECT_ID`
+   - `VITE_FIREBASE_APP_ID`
+6. Re-run the **Deploy browser app to GitHub Pages** workflow.
+
+After setup, users sign in with Google. Local business records are stored under a per-Google-account browser key on that device. This login does not yet provide cloud backup or cross-device data sync. Never put Firebase Admin SDK credentials or service-account private keys in the browser app or repository.

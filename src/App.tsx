@@ -1,59 +1,107 @@
-import { useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  Boxes, Users, Truck, ReceiptText, Wallet, ChartNoAxesCombined,
-  Plus, Search, Menu, Bell, Package, ArrowDownToLine
+  Boxes, Users, Truck, ReceiptText, Wallet, ChartNoAxesCombined, Plus, Search,
+  Menu, Bell, Package, ArrowDownToLine, Trash2, X, Download, Printer, ShoppingCart,
+  TrendingUp, CircleDollarSign, LayoutDashboard, Settings, RotateCcw
 } from "lucide-react";
 
-type ModuleKey = "Dashboard" | "Products & Stock" | "Billing" | "Customers" | "Suppliers" | "Payments" | "Expenses" | "Reports";
+type Page = "Dashboard" | "Products & Stock" | "Billing" | "Customers" | "Suppliers" | "Payments" | "Expenses" | "Reports";
+type Product = { id:string; name:string; sku:string; unit:string; price:number; cost:number; stock:number; };
+type Party = { id:string; name:string; phone:string; address:string; };
+type InvoiceItem = { productId:string; name:string; qty:number; price:number; };
+type Invoice = { id:string; number:string; date:string; customerId:string; customerName:string; items:InvoiceItem[]; total:number; paid:number; };
+type Expense = { id:string; title:string; category:string; amount:number; date:string; };
+type Payment = { id:string; party:string; kind:"Received"|"Paid"; amount:number; date:string; note:string; };
+type Store = { products:Product[]; customers:Party[]; suppliers:Party[]; invoices:Invoice[]; expenses:Expense[]; payments:Payment[]; };
 
-const modules: { name: ModuleKey; icon: typeof Boxes; hint: string }[] = [
-  { name: "Products & Stock", icon: Boxes, hint: "Manage items and inventory" },
-  { name: "Billing", icon: ReceiptText, hint: "Create invoices and sales" },
-  { name: "Customers", icon: Users, hint: "Customer ledger and balances" },
-  { name: "Suppliers", icon: Truck, hint: "Supplier accounts and purchases" },
-  { name: "Payments", icon: Wallet, hint: "Record received and paid amounts" },
-  { name: "Expenses", icon: ArrowDownToLine, hint: "Track business expenses" },
-  { name: "Reports", icon: ChartNoAxesCombined, hint: "Review business performance" }
+const emptyStore:Store = {products:[],customers:[],suppliers:[],invoices:[],expenses:[],payments:[]};
+const nav:{name:Page;icon:any;hint:string}[] = [
+ {name:"Products & Stock",icon:Boxes,hint:"Manage products, prices and inventory"},
+ {name:"Billing",icon:ReceiptText,hint:"Create invoices and record sales"},
+ {name:"Customers",icon:Users,hint:"Customer details and outstanding balances"},
+ {name:"Suppliers",icon:Truck,hint:"Supplier directory and purchase accounts"},
+ {name:"Payments",icon:Wallet,hint:"Record money received or paid"},
+ {name:"Expenses",icon:ArrowDownToLine,hint:"Track operating costs"},
+ {name:"Reports",icon:ChartNoAxesCombined,hint:"Review sales, dues and expenses"}
 ];
+const money=(n:number)=>new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:2}).format(n||0);
+const today=()=>new Date().toISOString().slice(0,10);
+const uid=()=>Math.random().toString(36).slice(2,10);
+function loadStore():Store { try { const raw=localStorage.getItem("nexora-wholesale-v1"); return raw?{...emptyStore,...JSON.parse(raw)}:emptyStore; } catch { return emptyStore; } }
 
-export default function App() {
-  const [active, setActive] = useState<ModuleKey>("Dashboard");
-  const [menuOpen, setMenuOpen] = useState(false);
+export default function App(){
+ const [data,setData]=useState<Store>(loadStore);
+ const [active,setActive]=useState<Page>("Dashboard");
+ const [menuOpen,setMenuOpen]=useState(false);
+ const [query,setQuery]=useState("");
+ const [showForm,setShowForm]=useState(false);
+ const [notice,setNotice]=useState("");
+ const [productForm,setProductForm]=useState({name:"",sku:"",unit:"pcs",price:"",cost:"",stock:""});
+ const [partyForm,setPartyForm]=useState({name:"",phone:"",address:""});
+ const [expenseForm,setExpenseForm]=useState({title:"",category:"General",amount:"",date:today()});
+ const [paymentForm,setPaymentForm]=useState({party:"",kind:"Received" as "Received"|"Paid",amount:"",date:today(),note:""});
+ const [billCustomer,setBillCustomer]=useState("");
+ const [billItems,setBillItems]=useState<InvoiceItem[]>([]);
+ const [billProduct,setBillProduct]=useState("");
+ const [billQty,setBillQty]=useState("1");
+ const [billPaid,setBillPaid]=useState("0");
+ useEffect(()=>{localStorage.setItem("nexora-wholesale-v1",JSON.stringify(data));},[data]);
+ useEffect(()=>{if(!notice)return;const t=window.setTimeout(()=>setNotice(""),2600);return()=>window.clearTimeout(t);},[notice]);
+ const update=<K extends keyof Store>(key:K,value:Store[K])=>setData(old=>({...old,[key]:value}));
+ const sales=data.invoices.reduce((s,x)=>s+x.total,0);
+ const received=data.invoices.reduce((s,x)=>s+x.paid,0)+data.payments.filter(p=>p.kind==="Received").reduce((s,p)=>s+p.amount,0);
+ const customerDue=data.invoices.reduce((s,x)=>s+Math.max(0,x.total-x.paid),0);
+ const expenses=data.expenses.reduce((s,x)=>s+x.amount,0);
+ const billTotal=billItems.reduce((s,x)=>s+x.qty*x.price,0);
+ const filteredProducts=data.products.filter(p=>(p.name+" "+p.sku).toLowerCase().includes(query.toLowerCase()));
+ const filteredCustomers=data.customers.filter(p=>(p.name+" "+p.phone).toLowerCase().includes(query.toLowerCase()));
+ const filteredSuppliers=data.suppliers.filter(p=>(p.name+" "+p.phone).toLowerCase().includes(query.toLowerCase()));
+ const lowStock=data.products.filter(p=>p.stock<=5);
+ const customerBalance=(id:string)=>data.invoices.filter(i=>i.customerId===id).reduce((s,i)=>s+i.total-i.paid,0);
+ const start=(page:Page)=>{setActive(page);setShowForm(false);setQuery("");setMenuOpen(false);};
+ const saveProduct=(e:FormEvent)=>{e.preventDefault();if(!productForm.name.trim())return;const p:Product={id:uid(),name:productForm.name.trim(),sku:productForm.sku,unit:productForm.unit,price:Number(productForm.price)||0,cost:Number(productForm.cost)||0,stock:Number(productForm.stock)||0};update("products",[p,...data.products]);setProductForm({name:"",sku:"",unit:"pcs",price:"",cost:"",stock:""});setShowForm(false);setNotice("Product saved on this device");};
+ const saveParty=(e:FormEvent,kind:"customers"|"suppliers")=>{e.preventDefault();if(!partyForm.name.trim())return;update(kind,[{id:uid(),...partyForm},...data[kind]]);setPartyForm({name:"",phone:"",address:""});setShowForm(false);setNotice(kind==="customers"?"Customer added":"Supplier added");};
+ const addBillItem=()=>{const p=data.products.find(x=>x.id===billProduct);const q=Number(billQty);if(!p||q<=0)return;setBillItems(old=>{const found=old.find(x=>x.productId===p.id);return found?old.map(x=>x.productId===p.id?{...x,qty:x.qty+q}:x):[...old,{productId:p.id,name:p.name,qty:q,price:p.price}];});setBillQty("1");};
+ const saveBill=()=>{if(!billItems.length){setNotice("Add at least one product");return;}const customer=data.customers.find(c=>c.id===billCustomer);const paid=Math.min(billTotal,Math.max(0,Number(billPaid)||0));const invoice:Invoice={id:uid(),number:"NX-"+Date.now().toString().slice(-7),date:today(),customerId:customer?.id||"",customerName:customer?.name||"Walk-in Customer",items:billItems,total:billTotal,paid};update("invoices",[invoice,...data.invoices]);update("products",data.products.map(p=>{const line=billItems.find(i=>i.productId===p.id);return line?{...p,stock:Math.max(0,p.stock-line.qty)}:p;}));setBillItems([]);setBillCustomer("");setBillPaid("0");setBillProduct("");setActive("Billing");setNotice("Invoice saved; stock updated");};
+ const saveExpense=(e:FormEvent)=>{e.preventDefault();if(!expenseForm.title.trim()||Number(expenseForm.amount)<=0)return;update("expenses",[{id:uid(),...expenseForm,amount:Number(expenseForm.amount)},...data.expenses]);setExpenseForm({title:"",category:"General",amount:"",date:today()});setShowForm(false);setNotice("Expense saved");};
+ const savePayment=(e:FormEvent)=>{e.preventDefault();if(Number(paymentForm.amount)<=0)return;update("payments",[{id:uid(),...paymentForm,amount:Number(paymentForm.amount)},...data.payments]);setPaymentForm({party:"",kind:"Received",amount:"",date:today(),note:""});setShowForm(false);setNotice("Payment recorded");};
+ const exportCsv=()=>{const rows=[["Invoice","Date","Customer","Total","Paid","Due"],...data.invoices.map(i=>[i.number,i.date,i.customerName,String(i.total),String(i.paid),String(i.total-i.paid)])];const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download="nexora-sales-report.csv";a.click();URL.revokeObjectURL(a.href);};
+ const resetDemo=()=>{if(confirm("Delete all Nexora data stored on this device? This cannot be undone.")){setData(emptyStore);setNotice("Local data cleared");}};
+ const pageHint=nav.find(n=>n.name===active)?.hint||"Your business at a glance";
 
-  return (
-    <div className="app-shell">
-      <aside className={menuOpen ? "sidebar open" : "sidebar"}>
-        <div className="brand"><div className="brand-mark">N</div><div><strong>NEXORA</strong><small>WHOLESALE MANAGER</small></div></div>
-        <div className="nav-label">WORKSPACE</div>
-        <button className={active === "Dashboard" ? "nav-item selected" : "nav-item"} onClick={() => setActive("Dashboard")}><ChartNoAxesCombined size={18}/>Dashboard</button>
-        {modules.map(({ name, icon: Icon }) => <button key={name} className={active === name ? "nav-item selected" : "nav-item"} onClick={() => { setActive(name); setMenuOpen(false); }}><Icon size={18}/>{name}</button>)}
-        <div className="sidebar-foot"><span className="status-dot"/> Offline-ready workspace</div>
-      </aside>
-
-      <main className="main-area">
-        <header className="topbar">
-          <button className="icon-button mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle menu"><Menu/></button>
-          <div className="breadcrumb">Workspace <span>/</span> {active}</div>
-          <div className="top-actions"><span className="offline-pill"><span className="status-dot"/> Offline mode</span><button className="icon-button" aria-label="Notifications"><Bell size={19}/></button><div className="avatar">A</div></div>
-        </header>
-
-        <section className="page-content">
-          <div className="welcome-row"><div><p className="eyebrow">BUSINESS OVERVIEW</p><h1>{active === "Dashboard" ? "Good morning" : active}</h1><p className="muted">{active === "Dashboard" ? "Here’s what’s happening with your wholesale business today." : modules.find(m => m.name === active)?.hint}</p></div><button className="primary-button" onClick={() => setActive("Billing")}><Plus size={18}/> Create new bill</button></div>
-
-          {active === "Dashboard" ? <>
-            <div className="stats-grid">
-              <article className="stat-card"><span className="stat-icon blue"><Wallet/></span><p>Total Sales</p><strong>₹0.00</strong><small>For this month</small></article>
-              <article className="stat-card"><span className="stat-icon green"><ChartNoAxesCombined/></span><p>Amount Received</p><strong>₹0.00</strong><small>Payments collected</small></article>
-              <article className="stat-card"><span className="stat-icon orange"><Users/></span><p>Customer Due</p><strong>₹0.00</strong><small>Outstanding balance</small></article>
-              <article className="stat-card"><span className="stat-icon violet"><Package/></span><p>Stock Items</p><strong>0</strong><small>Products in inventory</small></article>
-            </div>
-            <div className="section-heading"><div><h2>Quick actions</h2><p className="muted">Common tasks for your business</p></div></div>
-            <div className="quick-grid">{modules.slice(0, 6).map(({ name, icon: Icon, hint }) => <button className="quick-card" key={name} onClick={() => setActive(name)}><span className="quick-icon"><Icon size={21}/></span><strong>{name}</strong><small>{hint}</small></button>)}</div>
-            <div className="bottom-grid"><section className="panel"><div className="panel-head"><div><h2>Recent transactions</h2><p className="muted">Your latest business activity</p></div><button className="text-button" onClick={() => setActive("Reports")}>View reports</button></div><div className="empty-state"><div className="empty-icon"><ReceiptText/></div><strong>No transactions yet</strong><p>Your sales and payments will appear here.</p><button className="secondary-button" onClick={() => setActive("Billing")}><Plus size={16}/> Create first bill</button></div></section><section className="panel"><div className="panel-head"><div><h2>Getting started</h2><p className="muted">Set up your workspace</p></div></div><div className="setup-list"><div><span>1</span><p><strong>Add products</strong><small>Create your product catalogue</small></p></div><div><span>2</span><p><strong>Add customers</strong><small>Keep customer balances organised</small></p></div><div><span>3</span><p><strong>Create your first bill</strong><small>Start recording sales</small></p></div></div></section></div>
-          </> : <section className="panel module-placeholder"><div className="empty-icon"><Search/></div><h2>{active} workspace</h2><p className="muted">This section is being prepared. Your existing billing workflow will be preserved as features are added.</p><button className="secondary-button" onClick={() => setActive("Dashboard")}>Back to dashboard</button></section>}
-          <footer>© 2026 Nexora Wholesale Business Manager <span>Designed for simple, reliable business management.</span></footer>
-        </section>
-      </main>
-    </div>
-  );
+ return <div className="app-shell">
+  <aside className={menuOpen?"sidebar open":"sidebar"}>
+   <div className="brand"><div className="brand-mark">N</div><div><strong>NEXORA</strong><small>WHOLESALE MANAGER</small></div></div>
+   <div className="nav-label">WORKSPACE</div>
+   <button className={active==="Dashboard"?"nav-item selected":"nav-item"} onClick={()=>start("Dashboard")}><LayoutDashboard size={18}/>Dashboard</button>
+   {nav.map(({name,icon:Icon})=><button key={name} className={active===name?"nav-item selected":"nav-item"} onClick={()=>start(name)}><Icon size={18}/>{name}</button>)}
+   <div className="sidebar-foot"><span className="status-dot"/> Data saved on this device</div>
+  </aside>
+  <main className="main-area">
+   <header className="topbar"><button className="icon-button mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Toggle menu"><Menu/></button><div className="breadcrumb">Workspace <span>/</span> {active}</div><div className="top-actions"><span className="offline-pill"><span className="status-dot"/> Offline-ready</span><div className="avatar">N</div></div></header>
+   <section className="page-content">
+    <div className="welcome-row"><div><p className="eyebrow">NEXORA WHOLESALE BUSINESS MANAGER</p><h1>{active==="Dashboard"?"Business overview":active}</h1><p className="muted">{pageHint}</p></div>{active!=="Dashboard"&&active!=="Reports"&&<button className="primary-button" onClick={()=>setShowForm(true)}><Plus size={17}/>{active==="Products & Stock"?"Add product":active==="Customers"?"Add customer":active==="Suppliers"?"Add supplier":active==="Expenses"?"Add expense":active==="Payments"?"Record payment":"New bill"}</button>}</div>
+    {active==="Dashboard"&&<><div className="stats-grid">
+      <Stat icon={<Wallet/>} label="Total Sales" value={money(sales)} note="Recorded invoices" color="blue"/><Stat icon={<CircleDollarSign/>} label="Amount Received" value={money(received)} note="Invoices + payments" color="green"/><Stat icon={<Users/>} label="Customer Due" value={money(customerDue)} note="Unpaid invoice balance" color="orange"/><Stat icon={<Package/>} label="Stock Items" value={String(data.products.length)} note={lowStock.length+" low-stock products"} color="violet"/>
+     </div><div className="section-heading"><div><h2>Quick actions</h2><p className="muted">Common tasks for your business</p></div></div><div className="quick-grid">{nav.slice(0,6).map(({name,icon:Icon,hint})=><button className="quick-card" key={name} onClick={()=>start(name)}><span className="quick-icon"><Icon size={21}/></span><strong>{name}</strong><small>{hint}</small></button>)}</div>
+     <div className="bottom-grid"><section className="panel"><div className="panel-head"><div><h2>Recent invoices</h2><p className="muted">Latest recorded sales</p></div><button className="text-button" onClick={()=>start("Billing")}>View all</button></div><InvoiceTable invoices={data.invoices.slice(0,5)}/></section><section className="panel"><div className="panel-head"><div><h2>Stock alerts</h2><p className="muted">Products with 5 or fewer units</p></div></div>{lowStock.length?lowStock.slice(0,5).map(p=><div className="alert-row" key={p.id}><span>{p.name}</span><strong>{p.stock} {p.unit}</strong></div>):<div className="empty-state"><div className="empty-icon"><Boxes/></div><strong>No low-stock alerts</strong><p>Add products to track inventory.</p></div>}</section></div></>}
+    {active==="Products & Stock"&&<><SearchBar query={query} setQuery={setQuery} placeholder="Search product or SKU"/>{showForm&&<form className="form-panel" onSubmit={saveProduct}><div className="form-title"><h2>New product</h2><button type="button" className="icon-button" onClick={()=>setShowForm(false)}><X/></button></div><div className="form-grid"><Field label="Product name" value={productForm.name} onChange={v=>setProductForm({...productForm,name:v})} required/><Field label="SKU / Code" value={productForm.sku} onChange={v=>setProductForm({...productForm,sku:v})}/><Field label="Selling price (₹)" type="number" value={productForm.price} onChange={v=>setProductForm({...productForm,price:v})}/><Field label="Purchase cost (₹)" type="number" value={productForm.cost} onChange={v=>setProductForm({...productForm,cost:v})}/><Field label="Opening stock" type="number" value={productForm.stock} onChange={v=>setProductForm({...productForm,stock:v})}/><label className="field"><span>Unit</span><select value={productForm.unit} onChange={e=>setProductForm({...productForm,unit:e.target.value})}><option>pcs</option><option>kg</option><option>bag</option><option>box</option><option>packet</option><option>dozen</option></select></label></div><button className="primary-button">Save product</button></form>}<div className="panel"><DataTable headers={["Product","SKU","Price","Stock","Action"]} empty="No products yet. Add your first product.">{filteredProducts.map(p=><tr key={p.id}><td><strong>{p.name}</strong></td><td>{p.sku||"—"}</td><td>{money(p.price)}</td><td><span className={p.stock<=5?"stock-low":"stock-good"}>{p.stock} {p.unit}</span></td><td><button className="icon-button danger" title="Delete product" onClick={()=>{if(confirm("Delete "+p.name+"?"))update("products",data.products.filter(x=>x.id!==p.id));}}><Trash2 size={16}/></button></td></tr>)}</DataTable></div></>}
+    {active==="Customers"&&<PartyPage title="Customer" parties={filteredCustomers} balances={data.customers.map(c=>({id:c.id,balance:customerBalance(c.id)}))} query={query} setQuery={setQuery} showForm={showForm} setShowForm={setShowForm} form={partyForm} setForm={setPartyForm} onSubmit={e=>saveParty(e,"customers")} onDelete={id=>update("customers",data.customers.filter(x=>x.id!==id))}/>}
+    {active==="Suppliers"&&<PartyPage title="Supplier" parties={filteredSuppliers} query={query} setQuery={setQuery} showForm={showForm} setShowForm={setShowForm} form={partyForm} setForm={setPartyForm} onSubmit={e=>saveParty(e,"suppliers")} onDelete={id=>update("suppliers",data.suppliers.filter(x=>x.id!==id))}/>}
+    {active==="Billing"&&<><div className="panel bill-panel"><h2>Create sales invoice</h2><p className="muted">Choose a customer and add products. Stock is reduced when the invoice is saved.</p><div className="form-grid bill-top"><label className="field"><span>Customer</span><select value={billCustomer} onChange={e=>setBillCustomer(e.target.value)}><option value="">Walk-in Customer</option>{data.customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><div className="field"><span>Invoice date</span><input value={today()} readOnly/></div></div><div className="add-line"><label className="field"><span>Product</span><select value={billProduct} onChange={e=>setBillProduct(e.target.value)}><option value="">Select product</option>{data.products.map(p=><option key={p.id} value={p.id}>{p.name} · {money(p.price)} · Stock {p.stock}</option>)}</select></label><label className="field qty-field"><span>Qty</span><input type="number" min="0.01" step="0.01" value={billQty} onChange={e=>setBillQty(e.target.value)}/></label><button className="secondary-button add-line-btn" onClick={addBillItem} type="button"><Plus size={16}/> Add</button></div>{billItems.length>0&&<div className="table-wrap"><table><thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th><th></th></tr></thead><tbody>{billItems.map(i=><tr key={i.productId}><td>{i.name}</td><td>{i.qty}</td><td>{money(i.price)}</td><td>{money(i.qty*i.price)}</td><td><button className="icon-button danger" onClick={()=>setBillItems(billItems.filter(x=>x.productId!==i.productId))}><Trash2 size={15}/></button></td></tr>)}</tbody></table></div>}<div className="bill-summary"><div><span>Invoice total</span><strong>{money(billTotal)}</strong></div><label className="field"><span>Amount received (₹)</span><input type="number" min="0" max={billTotal} value={billPaid} onChange={e=>setBillPaid(e.target.value)}/></label><div><span>Balance due</span><strong>{money(Math.max(0,billTotal-(Number(billPaid)||0)))}</strong></div></div><button className="primary-button" onClick={saveBill} disabled={!billItems.length}><ReceiptText size={17}/> Save invoice</button></div><div className="panel"><div className="panel-head"><div><h2>Invoice history</h2><p className="muted">{data.invoices.length} invoices recorded</p></div></div><InvoiceTable invoices={data.invoices}/></div></>}
+    {active==="Payments"&&<>{showForm&&<form className="form-panel" onSubmit={savePayment}><div className="form-title"><h2>Record payment</h2><button type="button" className="icon-button" onClick={()=>setShowForm(false)}><X/></button></div><div className="form-grid"><label className="field"><span>Type</span><select value={paymentForm.kind} onChange={e=>setPaymentForm({...paymentForm,kind:e.target.value as "Received"|"Paid"})}><option>Received</option><option>Paid</option></select></label><Field label="Customer / Supplier" value={paymentForm.party} onChange={v=>setPaymentForm({...paymentForm,party:v})}/><Field label="Amount (₹)" type="number" value={paymentForm.amount} onChange={v=>setPaymentForm({...paymentForm,amount:v})} required/><Field label="Date" type="date" value={paymentForm.date} onChange={v=>setPaymentForm({...paymentForm,date:v})}/><Field label="Note" value={paymentForm.note} onChange={v=>setPaymentForm({...paymentForm,note:v})}/></div><button className="primary-button">Save payment</button></form>}<div className="panel"><DataTable headers={["Date","Type","Party","Note","Amount"]} empty="No payments recorded.">{data.payments.map(p=><tr key={p.id}><td>{p.date}</td><td><span className={p.kind==="Received"?"stock-good":"stock-low"}>{p.kind}</span></td><td>{p.party||"—"}</td><td>{p.note||"—"}</td><td>{money(p.amount)}</td></tr>)}</DataTable></div></>}
+    {active==="Expenses"&&<>{showForm&&<form className="form-panel" onSubmit={saveExpense}><div className="form-title"><h2>New expense</h2><button type="button" className="icon-button" onClick={()=>setShowForm(false)}><X/></button></div><div className="form-grid"><Field label="Expense title" value={expenseForm.title} onChange={v=>setExpenseForm({...expenseForm,title:v})} required/><label className="field"><span>Category</span><select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm,category:e.target.value})}><option>General</option><option>Transport</option><option>Rent</option><option>Salary</option><option>Utility</option><option>Packaging</option><option>Other</option></select></label><Field label="Amount (₹)" type="number" value={expenseForm.amount} onChange={v=>setExpenseForm({...expenseForm,amount:v})} required/><Field label="Date" type="date" value={expenseForm.date} onChange={v=>setExpenseForm({...expenseForm,date:v})}/></div><button className="primary-button">Save expense</button></form>}<div className="panel"><DataTable headers={["Date","Expense","Category","Amount",""]} empty="No expenses recorded.">{data.expenses.map(x=><tr key={x.id}><td>{x.date}</td><td>{x.title}</td><td>{x.category}</td><td>{money(x.amount)}</td><td><button className="icon-button danger" onClick={()=>update("expenses",data.expenses.filter(y=>y.id!==x.id))}><Trash2 size={15}/></button></td></tr>)}</DataTable></div></>}
+    {active==="Reports"&&<><div className="stats-grid"><Stat icon={<TrendingUp/>} label="Gross Sales" value={money(sales)} note="All saved invoices" color="blue"/><Stat icon={<Wallet/>} label="Received" value={money(received)} note="Payments logged" color="green"/><Stat icon={<Users/>} label="Invoice Due" value={money(customerDue)} note="Unpaid invoice amounts" color="orange"/><Stat icon={<ArrowDownToLine/>} label="Expenses" value={money(expenses)} note="Recorded operating costs" color="violet"/></div><div className="panel report-panel"><div className="panel-head"><div><h2>Business summary</h2><p className="muted">Based on records saved on this device</p></div><button className="secondary-button" onClick={exportCsv}><Download size={16}/> Export CSV</button></div><div className="report-line"><span>Sales less expenses</span><strong>{money(sales-expenses)}</strong></div><div className="report-line"><span>Customers</span><strong>{data.customers.length}</strong></div><div className="report-line"><span>Suppliers</span><strong>{data.suppliers.length}</strong></div><div className="report-line"><span>Products</span><strong>{data.products.length}</strong></div><div className="report-line"><span>Invoices</span><strong>{data.invoices.length}</strong></div><p className="muted report-note">This is a simple cash/record summary, not a tax or audited financial statement.</p></div><div className="panel"><div className="panel-head"><h2>Data backup</h2><button className="secondary-button" onClick={()=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="nexora-backup.json";a.click();URL.revokeObjectURL(a.href);}}><Download size={15}/> Download backup</button></div><p className="muted">Your records are stored locally in this browser on this device. Download a backup regularly. Clearing browser data may erase records.</p><button className="danger-button" onClick={resetDemo}><RotateCcw size={15}/> Clear all local business data</button></div></>}
+    <footer>© 2026 Nexora Wholesale Business Manager <span>Offline-first · Stored on this device</span></footer>
+   </section>
+  </main>
+  {notice&&<div className="toast">{notice}</div>}
+ </div>;
 }
+
+function Stat({icon,label,value,note,color}:{icon:any;label:string;value:string;note:string;color:string}){return <article className="stat-card"><span className={"stat-icon "+color}>{icon}</span><p>{label}</p><strong>{value}</strong><small>{note}</small></article>}
+function SearchBar({query,setQuery,placeholder}:{query:string;setQuery:(v:string)=>void;placeholder:string}){return <div className="search-wrap"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={placeholder}/></div>}
+function Field({label,value,onChange,type="text",required=false}:{label:string;value:string;onChange:(v:string)=>void;type?:string;required?:boolean}){return <label className="field"><span>{label}</span><input type={type} value={value} onChange={e=>onChange(e.target.value)} required={required}/></label>}
+function DataTable({headers,children,empty}:{headers:string[];children:any;empty:string}){return <div className="table-wrap"><table><thead><tr>{headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{children}</tbody></table>{!children?.length&&<div className="table-empty">{empty}</div>}</div>}
+function InvoiceTable({invoices}:{invoices:Invoice[]}){return <div className="table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Total</th><th>Due</th></tr></thead><tbody>{invoices.map(i=><tr key={i.id}><td><strong>{i.number}</strong></td><td>{i.customerName}</td><td>{i.date}</td><td>{money(i.total)}</td><td>{money(i.total-i.paid)}</td></tr>)}</tbody></table>{!invoices.length&&<div className="table-empty">No invoices yet.</div>}</div>}
+function PartyPage({title,parties,balances=[],query,setQuery,showForm,setShowForm,form,setForm,onSubmit,onDelete}:{title:string;parties:Party[];balances?:{id:string;balance:number}[];query:string;setQuery:(v:string)=>void;showForm:boolean;setShowForm:(v:boolean)=>void;form:{name:string;phone:string;address:string};setForm:(v:{name:string;phone:string;address:string})=>void;onSubmit:(e:FormEvent)=>void;onDelete:(id:string)=>void}){return <><SearchBar query={query} setQuery={setQuery} placeholder={"Search "+title.toLowerCase()+" or phone"}/>{showForm&&<form className="form-panel" onSubmit={onSubmit}><div className="form-title"><h2>New {title.toLowerCase()}</h2><button type="button" className="icon-button" onClick={()=>setShowForm(false)}><X/></button></div><div className="form-grid"><Field label="Full name / Business name" value={form.name} onChange={v=>setForm({...form,name:v})} required/><Field label="Phone" value={form.phone} onChange={v=>setForm({...form,phone:v})}/><Field label="Address" value={form.address} onChange={v=>setForm({...form,address:v})}/></div><button className="primary-button">Save {title.toLowerCase()}</button></form>}<div className="panel"><DataTable headers={["Name","Phone","Address",...(balances.length?["Invoice due"]:[]),"Action"]} empty={"No "+title.toLowerCase()+" records yet."}>{parties.map(p=><tr key={p.id}><td><strong>{p.name}</strong></td><td>{p.phone||"—"}</td><td>{p.address||"—"}</td>{balances.length>0&&<td>{money(balances.find(b=>b.id===p.id)?.balance||0)}</td>}<td><button className="icon-button danger" onClick={()=>{if(confirm("Delete "+p.name+"?"))onDelete(p.id);}}><Trash2 size={15}/></button></td></tr>)}</DataTable></div></>}

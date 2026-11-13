@@ -1,0 +1,9 @@
+{
+  "name": "Nexora Wholesale Store",
+  "short_name": "Nexora Store",
+  "start_url": "./customer.html",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#102b50",
+  "icons": []
+}

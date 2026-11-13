@@ -2,8 +2,10 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Boxes, Users, Truck, ReceiptText, Wallet, ChartNoAxesCombined, Plus, Search,
   Menu, Bell, Package, ArrowDownToLine, Trash2, X, Download, Printer, ShoppingCart,
-  TrendingUp, CircleDollarSign, LayoutDashboard, Settings, RotateCcw
+  TrendingUp, CircleDollarSign, LayoutDashboard, Settings, RotateCcw, LogOut, ShieldCheck
 } from "lucide-react";
+import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
+import { auth, googleProvider, firebaseConfigured } from "./firebase";
 
 type Page = "Dashboard" | "Products & Stock" | "Billing" | "Customers" | "Suppliers" | "Payments" | "Expenses" | "Reports";
 type Product = { id:string; name:string; sku:string; unit:string; price:number; cost:number; stock:number; };
@@ -27,10 +29,13 @@ const nav:{name:Page;icon:any;hint:string}[] = [
 const money=(n:number)=>new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:2}).format(n||0);
 const today=()=>new Date().toISOString().slice(0,10);
 const uid=()=>Math.random().toString(36).slice(2,10);
-function loadStore():Store { try { const raw=localStorage.getItem("nexora-wholesale-v1"); return raw?{...emptyStore,...JSON.parse(raw)}:emptyStore; } catch { return emptyStore; } }
+function loadStore(userId:string):Store { try { const raw=localStorage.getItem("nexora-wholesale-v1:"+userId); return raw?{...emptyStore,...JSON.parse(raw)}:emptyStore; } catch { return emptyStore; } }
 
 export default function App(){
- const [data,setData]=useState<Store>(loadStore);
+ const [currentUser,setCurrentUser]=useState<User|null>(null);
+ const [authLoading,setAuthLoading]=useState(true);
+ const [authError,setAuthError]=useState("");
+ const [data,setData]=useState<Store>(emptyStore);
  const [active,setActive]=useState<Page>("Dashboard");
  const [menuOpen,setMenuOpen]=useState(false);
  const [query,setQuery]=useState("");
@@ -45,7 +50,10 @@ export default function App(){
  const [billProduct,setBillProduct]=useState("");
  const [billQty,setBillQty]=useState("1");
  const [billPaid,setBillPaid]=useState("0");
- useEffect(()=>{localStorage.setItem("nexora-wholesale-v1",JSON.stringify(data));},[data]);
+ useEffect(()=>{if(!auth)return onAuthStateChanged(auth,()=>{});return onAuthStateChanged(auth,user=>{setCurrentUser(user);setAuthLoading(false);if(user)setData(loadStore(user.uid));});},[]);
+ useEffect(()=>{if(currentUser)localStorage.setItem("nexora-wholesale-v1:"+currentUser.uid,JSON.stringify(data));},[data,currentUser]);
+ const loginWithGoogle=async()=>{if(!auth)return;setAuthError("");try{await signInWithPopup(auth,googleProvider);}catch(error){setAuthError(error instanceof Error?error.message:"Google sign-in failed. Please try again.");}};
+ const logout=async()=>{if(auth)await signOut(auth);setActive("Dashboard");};
  useEffect(()=>{if(!notice)return;const t=window.setTimeout(()=>setNotice(""),2600);return()=>window.clearTimeout(t);},[notice]);
  const update=<K extends keyof Store>(key:K,value:Store[K])=>setData(old=>({...old,[key]:value}));
  const sales=data.invoices.reduce((s,x)=>s+x.total,0);
@@ -69,6 +77,9 @@ export default function App(){
  const resetDemo=()=>{if(confirm("Delete all Nexora data stored on this device? This cannot be undone.")){setData(emptyStore);setNotice("Local data cleared");}};
  const pageHint=nav.find(n=>n.name===active)?.hint||"Your business at a glance";
 
+ if(!firebaseConfigured)return <AuthSetupScreen/>;
+ if(authLoading)return <div className="auth-screen"><div className="auth-card"><div className="brand-mark">N</div><h1>NEXORA</h1><p>Checking your Google account…</p></div></div>;
+ if(!currentUser)return <LoginScreen onLogin={loginWithGoogle} error={authError}/>;
  return <div className="app-shell">
   <aside className={menuOpen?"sidebar open":"sidebar"}>
    <div className="brand"><div className="brand-mark">N</div><div><strong>NEXORA</strong><small>WHOLESALE MANAGER</small></div></div>
@@ -78,7 +89,7 @@ export default function App(){
    <div className="sidebar-foot"><span className="status-dot"/> Data saved on this device</div>
   </aside>
   <main className="main-area">
-   <header className="topbar"><button className="icon-button mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Toggle menu"><Menu/></button><div className="breadcrumb">Workspace <span>/</span> {active}</div><div className="top-actions"><span className="offline-pill"><span className="status-dot"/> Offline-ready</span><div className="avatar">N</div></div></header>
+   <header className="topbar"><button className="icon-button mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Toggle menu"><Menu/></button><div className="breadcrumb">Workspace <span>/</span> {active}</div><div className="top-actions"><span className="offline-pill"><span className="status-dot"/> Offline-ready</span><span className="user-email" title={currentUser.email||""}>{currentUser.displayName||currentUser.email}</span><button className="icon-button" onClick={logout} title="Sign out" aria-label="Sign out"><LogOut size={17}/></button><div className="avatar">{(currentUser.displayName||currentUser.email||"N").charAt(0).toUpperCase()}</div></div></header>
    <section className="page-content">
     <div className="welcome-row"><div><p className="eyebrow">NEXORA WHOLESALE BUSINESS MANAGER</p><h1>{active==="Dashboard"?"Business overview":active}</h1><p className="muted">{pageHint}</p></div>{active!=="Dashboard"&&active!=="Reports"&&<button className="primary-button" onClick={()=>setShowForm(true)}><Plus size={17}/>{active==="Products & Stock"?"Add product":active==="Customers"?"Add customer":active==="Suppliers"?"Add supplier":active==="Expenses"?"Add expense":active==="Payments"?"Record payment":"New bill"}</button>}</div>
     {active==="Dashboard"&&<><div className="stats-grid">
